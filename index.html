@@ -10,10 +10,7 @@
 
     <script src="./assets/tailwindcss.js"></script>
     <script src="./assets/html5-qrcode.min.js"></script>
-    <script src="./assets/xlsx.full.min.js"></script>
-
-    <!-- <script src="./assets/vconsole.min.js"></script> -->
-    <!-- <script>new window.VConsole()</script> -->
+    <script src="./assets/exceljs.min.js"></script>
 
     <style>
         #reader {
@@ -32,20 +29,6 @@
             border-radius: 6px;
             border: 1px solid #ddd
         }
-
-        .flash {
-            animation: flash .35s
-        }
-
-        @keyframes flash {
-            0% {
-                background: rgba(59, 130, 246, .6)
-            }
-
-            100% {
-                background: transparent
-            }
-        }
     </style>
 
 </head>
@@ -54,9 +37,7 @@
 
     <header class="bg-white px-4 py-3 shadow flex justify-between items-center">
 
-        <div>
-            <h1 class="text-xl font-black text-blue-600">SCANNER PRO</h1>
-        </div>
+        <h1 class="text-xl font-black text-blue-600">SCANNER PRO</h1>
 
         <div class="flex gap-2">
 
@@ -72,7 +53,7 @@
 
     </header>
 
-    <section id="scannerSection" class="p-4">
+    <section class="p-4">
 
         <div class="relative">
 
@@ -99,9 +80,7 @@
     </section>
 
     <main class="flex-1 overflow-y-auto px-4 pb-10">
-
         <div id="list" class="space-y-2"></div>
-
     </main>
 
     <div id="preview" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center">
@@ -120,45 +99,88 @@
 
         let columnNames = []
 
-        const MAX_HISTORY = 1000
+        const MAX_HISTORY = 100000
         const SCAN_DEBOUNCE = 300
         const PAUSE_TIME = 200
 
         let lastScan = 0
         let torch = false
 
-        /* ---------- 本地存储 ---------- */
+        /* IndexedDB */
 
-        function saveLocal() {
+        let db = null
 
-            localStorage.setItem("scan_history_v4", JSON.stringify(history))
+        function initDB() {
 
-        }
+            return new Promise((resolve, reject) => {
 
-        function loadLocal() {
+                const req = indexedDB.open("scannerDB", 1)
 
-            try {
+                req.onupgradeneeded = e => {
 
-                const d = localStorage.getItem("scan_history_v4")
-                if (d) history = JSON.parse(d)
+                    db = e.target.result
 
-                history.forEach(v => historyHash[v.code] = 1)
+                    db.createObjectStore("records", { keyPath: "id" })
 
-                const c = localStorage.getItem("scan_columns_v1")
-                if (c) columnNames = JSON.parse(c)
+                }
 
-                renderAll()
+                req.onsuccess = e => {
 
-            } catch (e) {
+                    db = e.target.result
+                    resolve()
 
-                history = []
-                historyHash = {}
+                }
 
-            }
+            })
 
         }
 
-        /* ---------- 列名配置 ---------- */
+        function saveItem(item) {
+
+            const tx = db.transaction("records", "readwrite")
+            tx.objectStore("records").put(item)
+
+        }
+
+        function deleteItemDB(id) {
+
+            const tx = db.transaction("records", "readwrite")
+            tx.objectStore("records").delete(id)
+
+        }
+
+        function clearDB() {
+
+            const tx = db.transaction("records", "readwrite")
+            tx.objectStore("records").clear()
+
+        }
+
+        function loadDB() {
+
+            return new Promise(resolve => {
+
+                const tx = db.transaction("records", "readonly")
+
+                const req = tx.objectStore("records").getAll()
+
+                req.onsuccess = () => {
+
+                    history = req.result.sort((a, b) => b.id - a.id)
+
+                    history.forEach(v => historyHash[v.code] = 1)
+
+                    renderAll()
+
+                    resolve()
+
+                }
+
+            })
+
+        }
+
+        /* 列名 */
 
         function configColumns() {
 
@@ -172,7 +194,15 @@
 
         }
 
-        /* ---------- 摄像头 ---------- */
+        function loadColumns() {
+
+            const c = localStorage.getItem("scan_columns_v1")
+
+            if (c) columnNames = JSON.parse(c)
+
+        }
+
+        /* 摄像头 */
 
         function getTrack() {
 
@@ -184,7 +214,7 @@
 
         }
 
-        /* ---------- 启动 ---------- */
+        /* 启动 */
 
         async function startScanner() {
 
@@ -200,7 +230,7 @@
 
         }
 
-        /* ---------- 快照 ---------- */
+        /* 快照 */
 
         function captureSnapshot() {
 
@@ -217,15 +247,23 @@
 
             const ctx = canvas.getContext("2d")
 
-            ctx.drawImage(video, 0, 0, size, size)
+            const vw = video.videoWidth
+            const vh = video.videoHeight
 
-            return canvas.toDataURL("image/jpeg", 0.6)
+            const s = Math.min(vw, vh)
+
+            const sx = (vw - s) / 2
+            const sy = (vh - s) / 2
+
+            ctx.drawImage(video, sx, sy, s, s, 0, 0, size, size)
+
+            return canvas.toDataURL("image/jpeg", 0.7)
 
         }
 
-        /* ---------- 扫码 ---------- */
+        /* 扫码 */
 
-        async function onScan(text) {
+        function onScan(text) {
 
             const now = Date.now()
 
@@ -233,9 +271,13 @@
 
             lastScan = now
 
+            if (!text) return
+
             if (historyHash[text]) return
 
             historyHash[text] = 1
+
+            if (scannerPaused) return
 
             scanner.pause(true)
             scannerPaused = true
@@ -245,13 +287,17 @@
             feedback()
 
             setTimeout(() => {
-                scanner.resume()
-                scannerPaused = false
+
+                if (scanner) {
+                    scanner.resume()
+                    scannerPaused = false
+                }
+
             }, PAUSE_TIME)
 
         }
 
-        /* ---------- 新记录 ---------- */
+        /* 新记录 */
 
         function addRecord(code) {
 
@@ -265,30 +311,23 @@
 
             history.unshift(item)
 
-            if (history.length > MAX_HISTORY) {
-
-                const r = history.pop()
-                delete historyHash[r.code]
-
-            }
+            saveItem(item)
 
             prependDOM(item)
 
             updateCount()
 
-            saveLocal()
-
         }
 
-        /* ---------- DOM ---------- */
+        /* DOM */
 
-        function prependDOM(item) {
-
-            const list = document.getElementById("list")
+        function createRow(item) {
 
             const el = document.createElement("div")
 
             el.className = "bg-white p-3 rounded shadow flex items-center gap-2"
+
+            el.dataset.id = item.id
 
             el.innerHTML = `
 
@@ -305,11 +344,21 @@
 
 `
 
+            return el
+
+        }
+
+        function prependDOM(item) {
+
+            const list = document.getElementById("list")
+
+            const el = createRow(item)
+
             list.prepend(el)
 
         }
 
-        /* ---------- 渲染 ---------- */
+        /* 渲染 */
 
         function renderAll() {
 
@@ -317,29 +366,37 @@
 
             list.innerHTML = ""
 
-            history.forEach(prependDOM)
+            history.forEach(v => {
+
+                list.appendChild(createRow(v))
+
+            })
 
             updateCount()
 
         }
 
-        /* ---------- 删除 ---------- */
+        /* 删除 */
 
         function removeItem(id) {
 
             const item = history.find(v => v.id == id)
 
+            if (!item) return
+
             history = history.filter(v => v.id != id)
 
             delete historyHash[item.code]
 
-            saveLocal()
+            deleteItemDB(item.id)
 
-            renderAll()
+            document.querySelector(`[data-id='${id}']`)?.remove()
+
+            updateCount()
 
         }
 
-        /* ---------- 排序 ---------- */
+        /* 排序 */
 
         function moveItem(id, dir) {
 
@@ -354,13 +411,11 @@
             history[i] = history[ni]
             history[ni] = t
 
-            saveLocal()
-
             renderAll()
 
         }
 
-        /* ---------- 快照预览 ---------- */
+        /* 预览 */
 
         function showPreview(src) {
 
@@ -374,11 +429,12 @@
 
         }
 
-        /* ---------- Torch ---------- */
+        /* Torch */
 
         async function toggleTorch() {
 
             const track = getTrack()
+
             if (!track) return
 
             const cap = track.getCapabilities()
@@ -398,9 +454,9 @@
 
         }
 
-        /* ---------- 导出 XLSX ---------- */
+        /* Excel导出 */
 
-        function exportXLSX() {
+        async function exportXLSX() {
 
             if (!history.length) return alert("无数据")
 
@@ -408,41 +464,57 @@
 
             cols = [...cols, "快照"]
 
-            let rows = []
+            const wb = new ExcelJS.Workbook()
+            const ws = wb.addWorksheet("scan")
+
+            ws.addRow(cols)
+
+            let r = 2
+            let c = 0
             let row = []
 
-            history.forEach(item => {
+            for (const item of history) {
 
                 row.push(item.code)
 
                 if (row.length === cols.length - 1) {
 
-                    rows.push([...row, item.snapshot])
+                    const excelRow = ws.addRow([...row, ""])
+
+                    if (item.snapshot) {
+
+                        const img = wb.addImage({
+                            base64: item.snapshot,
+                            extension: "jpeg"
+                        })
+
+                        ws.addImage(img, {
+                            tl: { col: cols.length - 1, row: r - 1 },
+                            ext: { width: 40, height: 40 }
+                        })
+
+                    }
 
                     row = []
+                    r++
 
                 }
 
-            })
-
-            if (row.length) {
-
-                while (row.length < cols.length - 1) row.push("")
-                rows.push([...row, ""])
-
             }
 
-            const ws = XLSX.utils.aoa_to_sheet([cols, ...rows])
+            const buf = await wb.xlsx.writeBuffer()
 
-            const wb = XLSX.utils.book_new()
+            const blob = new Blob([buf])
 
-            XLSX.utils.book_append_sheet(wb, ws, "scan")
+            const a = document.createElement("a")
 
-            XLSX.writeFile(wb, "scan_export.xlsx")
+            a.href = URL.createObjectURL(blob)
+            a.download = "scan_export.xlsx"
+            a.click()
 
         }
 
-        /* ---------- 反馈 ---------- */
+        /* 反馈 */
 
         function feedback() {
 
@@ -452,7 +524,7 @@
 
         }
 
-        /* ---------- 清空 ---------- */
+        /* 清空 */
 
         function clearAll() {
 
@@ -461,13 +533,13 @@
             history = []
             historyHash = {}
 
-            localStorage.removeItem("scan_history_v4")
+            clearDB()
 
             renderAll()
 
         }
 
-        /* ---------- count ---------- */
+        /* count */
 
         function updateCount() {
 
@@ -475,7 +547,17 @@
 
         }
 
-        window.onload = loadLocal
+        /* 初始化 */
+
+        window.onload = async () => {
+
+            await initDB()
+
+            loadColumns()
+
+            await loadDB()
+
+        }
 
     </script>
 
