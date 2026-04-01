@@ -2,10 +2,12 @@
 <html lang="zh-CN">
 
 <head>
+
     <meta charset="UTF-8">
+
     <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 
-    <title>Industrial Scanner</title>
+    <title>Scanner Pro Industrial</title>
 
     <script src="./assets/tailwindcss.js"></script>
     <script src="./assets/html5-qrcode.min.js"></script>
@@ -31,6 +33,10 @@
             scrollbar-width: none
         }
 
+        .flash {
+            animation: flash .35s
+        }
+
         @keyframes flash {
             0% {
                 background: rgba(59, 130, 246, .6)
@@ -40,11 +46,8 @@
                 background: transparent
             }
         }
-
-        .flash {
-            animation: flash .35s
-        }
     </style>
+
 </head>
 
 <body class="bg-gray-100 h-screen flex flex-col font-sans">
@@ -108,14 +111,9 @@
 
     <script>
 
-        /* ---------------------- */
-        /* 全局状态 */
-        /* ---------------------- */
-
         let scanner = null
         let history = []
-        let lastScanTime = 0
-        let scanLock = false
+        let historyHash = {}
 
         let currentZoom = 1
         let pinchStart = 0
@@ -124,22 +122,41 @@
         const SCAN_DEBOUNCE = 300
         const PAUSE_TIME = 200
 
-        /* ---------------------- */
-        /* 获取摄像头 track */
-        /* ---------------------- */
+        let lastScan = 0
+
+        /* ---------- 本地存储 ---------- */
+
+        function saveLocal() {
+            localStorage.setItem("scan_history_v2", JSON.stringify(history))
+        }
+
+        function loadLocal() {
+
+            const d = localStorage.getItem("scan_history_v2")
+
+            if (!d) return
+
+            history = JSON.parse(d)
+
+            history.forEach(v => historyHash[v.code] = 1)
+
+            renderAll()
+
+        }
+
+        /* ---------- 获取摄像头 ---------- */
 
         function getTrack() {
 
             const v = document.querySelector("#reader video")
+
             if (!v || !v.srcObject) return null
 
             return v.srcObject.getVideoTracks()[0]
 
         }
 
-        /* ---------------------- */
-        /* 启动扫描器 */
-        /* ---------------------- */
+        /* ---------- 启动扫描 ---------- */
 
         async function startScanner() {
 
@@ -151,20 +168,17 @@
                 { facingMode: "environment" },
                 {
                     fps: 30,
-                    qrbox: (w, h) => ({ width: w * .7, height: h * .35 }),
-                    aspectRatio: 1
+                    qrbox: (w, h) => ({ width: w * .7, height: h * .35 })
                 },
                 onScan
             )
 
-            enableAutoFocus()
             enableZoom()
+            enableAutoFocus()
 
         }
 
-        /* ---------------------- */
-        /* 自动对焦 */
-        /* ---------------------- */
+        /* ---------- 自动对焦 ---------- */
 
         async function enableAutoFocus() {
 
@@ -173,35 +187,41 @@
 
             const cap = track.getCapabilities()
 
-            if (cap.focusMode) {
+            if (!cap.focusMode) return
 
-                try {
-                    await track.applyConstraints({
-                        advanced: [{ focusMode: "continuous" }]
+            if (cap.focusMode.includes("continuous")) {
+
+                await track.applyConstraints({
+                    advanced: [{ focusMode: "continuous" }]
+                })
+
+            } else if (cap.focusMode.includes("single-shot")) {
+
+                setInterval(() => {
+
+                    track.applyConstraints({
+                        advanced: [{ focusMode: "single-shot" }]
                     })
-                } catch (e) { }
+
+                }, 2000)
 
             }
 
         }
 
-        /* ---------------------- */
-        /* 扫码处理 */
-        /* ---------------------- */
+        /* ---------- 扫码 ---------- */
 
         async function onScan(text) {
 
             const now = Date.now()
 
-            if (now - lastScanTime < SCAN_DEBOUNCE) return
+            if (now - lastScan < SCAN_DEBOUNCE) return
 
-            lastScanTime = now
+            lastScan = now
 
             if (historyHash[text]) return
 
             historyHash[text] = 1
-
-            scanLock = true
 
             scanner.pause(true)
 
@@ -211,20 +231,11 @@
 
             setTimeout(() => {
                 scanner.resume()
-                scanLock = false
             }, PAUSE_TIME)
 
         }
 
-        /* ---------------------- */
-        /* 去重 Hash */
-        /* ---------------------- */
-
-        const historyHash = {}
-
-        /* ---------------------- */
-        /* 新记录 */
-        /* ---------------------- */
+        /* ---------- 新记录 ---------- */
 
         function addRecord(code) {
 
@@ -236,66 +247,136 @@
 
             history.unshift(item)
 
-            appendDOM(item)
+            prependDOM(item)
 
             updateCount()
 
+            saveLocal()
+
         }
 
-        /* ---------------------- */
-        /* 增量 DOM */
-        /* ---------------------- */
+        /* ---------- DOM ---------- */
 
-        function appendDOM(item) {
+        function prependDOM(item) {
 
             const list = document.getElementById("list")
 
             const el = document.createElement("div")
 
-            el.className = "bg-white p-3 rounded shadow flex justify-between"
+            el.className = "bg-white p-3 rounded shadow flex justify-between items-center"
 
             el.innerHTML = `
-<div class="min-w-0">
+<div class="flex-1 min-w-0">
 <p class="font-mono font-bold truncate">${item.code}</p>
 <p class="text-xs text-gray-400">${item.time}</p>
 </div>
+
+<div class="flex gap-2">
+
+<button onclick="moveItem('${item.id}',-1)">⬆</button>
+<button onclick="moveItem('${item.id}',1)">⬇</button>
+
 <button onclick="removeItem('${item.id}')" class="text-red-400">删</button>
+
+</div>
 `
 
             list.prepend(el)
 
         }
 
-        /* ---------------------- */
-        /* 删除 */
-        /* ---------------------- */
+        /* ---------- 重绘 ---------- */
 
-        function removeItem(id) {
+        function renderAll() {
 
-            history = history.filter(v => v.id != id)
+            const list = document.getElementById("list")
 
-            location.reload()
+            list.innerHTML = ""
 
-        }
+            const frag = document.createDocumentFragment()
 
-        /* ---------------------- */
-        /* 清空 */
-        /* ---------------------- */
+            history.forEach(item => {
 
-        function clearAll() {
+                const el = document.createElement("div")
 
-            history = []
-            Object.keys(historyHash).forEach(k => delete historyHash[k])
+                el.className = "bg-white p-3 rounded shadow flex justify-between items-center"
 
-            document.getElementById("list").innerHTML = ""
+                el.innerHTML = `
+<div class="flex-1 min-w-0">
+<p class="font-mono font-bold truncate">${item.code}</p>
+<p class="text-xs text-gray-400">${item.time}</p>
+</div>
+
+<div class="flex gap-2">
+
+<button onclick="moveItem('${item.id}',-1)">⬆</button>
+<button onclick="moveItem('${item.id}',1)">⬇</button>
+
+<button onclick="removeItem('${item.id}')" class="text-red-400">删</button>
+
+</div>
+`
+
+                frag.appendChild(el)
+
+            })
+
+            list.appendChild(frag)
 
             updateCount()
 
         }
 
-        /* ---------------------- */
-        /* 更新计数 */
-        /* ---------------------- */
+        /* ---------- 删除 ---------- */
+
+        function removeItem(id) {
+
+            history = history.filter(v => v.id != id)
+
+            saveLocal()
+
+            renderAll()
+
+        }
+
+        /* ---------- 排序 ---------- */
+
+        function moveItem(id, dir) {
+
+            const i = history.findIndex(v => v.id == id)
+
+            const ni = i + dir
+
+            if (ni < 0 || ni >= history.length) return
+
+            const t = history[i]
+
+            history[i] = history[ni]
+
+            history[ni] = t
+
+            saveLocal()
+
+            renderAll()
+
+        }
+
+        /* ---------- 清空 ---------- */
+
+        function clearAll() {
+
+            if (!confirm("确定清空?")) return
+
+            history = []
+            historyHash = {}
+
+            localStorage.removeItem("scan_history_v2")
+
+            renderAll()
+
+        }
+
+        /* ---------- 计数 ---------- */
 
         function updateCount() {
 
@@ -303,9 +384,7 @@
 
         }
 
-        /* ---------------------- */
-        /* Torch */
-        /* ---------------------- */
+        /* ---------- Torch ---------- */
 
         async function toggleTorch() {
 
@@ -327,9 +406,7 @@
 
         }
 
-        /* ---------------------- */
-        /* Zoom */
-        /* ---------------------- */
+        /* ---------- Zoom ---------- */
 
         function enableZoom() {
 
@@ -383,18 +460,13 @@
 
         }
 
-        /* ---------------------- */
-        /* 反馈 */
-        /* ---------------------- */
+        /* ---------- 反馈 ---------- */
 
         function feedback() {
 
-            const beep = document.getElementById("beep")
+            document.getElementById("beep").play().catch(() => { })
 
-            beep.play().catch(() => { })
-
-            if (navigator.vibrate)
-                navigator.vibrate(30)
+            if (navigator.vibrate) navigator.vibrate(30)
 
             const r = document.getElementById("reader")
 
@@ -404,9 +476,7 @@
 
         }
 
-        /* ---------------------- */
-        /* CSV */
-        /* ---------------------- */
+        /* ---------- 导出 ---------- */
 
         function exportCSV() {
 
@@ -430,21 +500,9 @@
 
         }
 
-        /* ---------------------- */
-        /* 页面隐藏自动暂停 */
-        /* ---------------------- */
+        /* ---------- 初始化 ---------- */
 
-        document.addEventListener("visibilitychange", () => {
-
-            if (!scanner) return
-
-            if (document.hidden)
-                scanner.pause()
-
-            else
-                scanner.resume()
-
-        })
+        window.onload = loadLocal
 
     </script>
 
