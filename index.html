@@ -4,9 +4,7 @@
 <head>
 
     <meta charset="UTF-8">
-
     <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-
     <title>Scanner Pro Industrial</title>
 
     <script src="./assets/tailwindcss.js"></script>
@@ -21,7 +19,7 @@
             overflow: hidden;
             background: #000;
             border: 4px solid white;
-            touch-action: none;
+            touch-action: none
         }
 
         .no-scrollbar::-webkit-scrollbar {
@@ -53,7 +51,6 @@
 <body class="bg-gray-100 h-screen flex flex-col font-sans">
 
     <header class="bg-white px-4 py-3 shadow flex justify-between items-center">
-
         <div>
             <h1 class="text-xl font-black text-blue-600">SCANNER PRO</h1>
             <p class="text-xs text-gray-400">Industrial Edition</p>
@@ -62,7 +59,6 @@
         <button onclick="exportCSV()" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold">
             导出 (<span id="count">0</span>)
         </button>
-
     </header>
 
     <section class="p-4 flex-shrink-0">
@@ -76,13 +72,8 @@
             </div>
 
             <div id="overlay" class="absolute inset-0 bg-black/80 flex items-center justify-center text-white">
-
-                <button onclick="startScanner()" class="bg-blue-500 p-5 rounded-full shadow-xl animate-bounce">
-
-                    ▶
-
-                </button>
-
+                <button onclick="startScanner()"
+                    class="bg-blue-500 p-5 rounded-full shadow-xl animate-bounce">▶</button>
             </div>
 
         </div>
@@ -102,9 +93,7 @@
     </section>
 
     <main class="flex-1 overflow-y-auto px-4 pb-10 no-scrollbar">
-
         <div id="list" class="space-y-2"></div>
-
     </main>
 
     <audio id="beep" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
@@ -112,13 +101,20 @@
     <script>
 
         let scanner = null
+        let scannerPaused = false
+
         let history = []
         let historyHash = {}
 
+        let focusTimer = null
+
         let currentZoom = 1
         let pinchStart = 0
+        let zoomLock = false
+
         let torch = false
 
+        const MAX_HISTORY = 1000
         const SCAN_DEBOUNCE = 300
         const PAUSE_TIME = 200
 
@@ -127,24 +123,38 @@
         /* ---------- 本地存储 ---------- */
 
         function saveLocal() {
-            localStorage.setItem("scan_history_v2", JSON.stringify(history))
+            try {
+                localStorage.setItem("scan_history_v2", JSON.stringify(history))
+            } catch (e) { }
         }
 
         function loadLocal() {
 
-            const d = localStorage.getItem("scan_history_v2")
+            try {
 
-            if (!d) return
+                const d = localStorage.getItem("scan_history_v2")
 
-            history = JSON.parse(d)
+                if (!d) return
 
-            history.forEach(v => historyHash[v.code] = 1)
+                history = JSON.parse(d) || []
 
-            renderAll()
+                history.forEach(v => historyHash[v.code] = 1)
+
+                renderAll()
+
+            } catch (e) {
+
+                console.warn("localStorage损坏已清空")
+
+                localStorage.removeItem("scan_history_v2")
+
+                history = []
+                historyHash = {}
+            }
 
         }
 
-        /* ---------- 获取摄像头 ---------- */
+        /* ---------- 摄像头track ---------- */
 
         function getTrack() {
 
@@ -197,7 +207,9 @@
 
             } else if (cap.focusMode.includes("single-shot")) {
 
-                setInterval(() => {
+                clearInterval(focusTimer)
+
+                focusTimer = setInterval(() => {
 
                     track.applyConstraints({
                         advanced: [{ focusMode: "single-shot" }]
@@ -223,14 +235,26 @@
 
             historyHash[text] = 1
 
-            scanner.pause(true)
+            if (scanner && !scannerPaused) {
+
+                scanner.pause(true)
+                scannerPaused = true
+
+            }
 
             addRecord(text)
 
             feedback()
 
             setTimeout(() => {
-                scanner.resume()
+
+                if (scanner && scannerPaused) {
+
+                    scanner.resume()
+                    scannerPaused = false
+
+                }
+
             }, PAUSE_TIME)
 
         }
@@ -246,6 +270,14 @@
             }
 
             history.unshift(item)
+
+            if (history.length > MAX_HISTORY) {
+
+                const removed = history.pop()
+
+                delete historyHash[removed.code]
+
+            }
 
             prependDOM(item)
 
@@ -331,7 +363,13 @@
 
         function removeItem(id) {
 
+            const item = history.find(v => v.id == id)
+
+            if (!item) return
+
             history = history.filter(v => v.id != id)
+
+            delete historyHash[item.code]
 
             saveLocal()
 
@@ -394,8 +432,11 @@
             const cap = track.getCapabilities()
 
             if (!cap.torch) {
+
                 alert("设备不支持")
+
                 return
+
             }
 
             torch = !torch
@@ -428,6 +469,8 @@
 
                 if (e.touches.length != 2) return
 
+                if (zoomLock) return
+
                 e.preventDefault()
 
                 const track = getTrack()
@@ -446,6 +489,8 @@
 
                 next = Math.max(cap.zoom.min, Math.min(cap.zoom.max, next))
 
+                zoomLock = true
+
                 await track.applyConstraints({
                     advanced: [{ zoom: next }]
                 })
@@ -455,6 +500,8 @@
 
                 document.getElementById("zoomUI").classList.remove("hidden")
                 document.getElementById("zoomVal").innerText = currentZoom.toFixed(1)
+
+                setTimeout(() => zoomLock = false, 80)
 
             }, { passive: false })
 
@@ -485,7 +532,11 @@
             let csv = "\uFEFF序号,条码,时间\n"
 
             history.forEach((v, i) => {
-                csv += `${i + 1},"${v.code}","${v.time}"\n`
+
+                const code = v.code.replaceAll('"', '""')
+
+                csv += `${i + 1},"${code}","${v.time}"\n`
+
             })
 
             const blob = new Blob([csv])
