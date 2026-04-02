@@ -5,17 +5,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
     <title>扫描管理器</title>
+
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="扫描管理器">
+    <link rel="apple-touch-icon" href="icon.png">
+
     <script src="./assets/tailwindcss.js"></script>
     <script src="./assets/html5-qrcode.min.js"></script>
     <script src="./assets/exceljs.min.js"></script>
     <script src="./assets/vue.global.js"></script>
     <script src="./assets/Sortable.min.js"></script>
-    <!-- <script src="./assets/vconsole.min.js"></script>
-    <script>new window.VConsole()</script> -->
+    <script src="./assets/vconsole.min.js"></script>
+    <script>new window.VConsole()</script>
 </head>
 
 <body class="bg-gray-100 h-screen flex flex-col font-sans">
     <div id="app">
+        <!-- 顶栏 -->
         <header class="bg-white px-4 py-3 shadow flex justify-between items-center">
             <h1 class="text-xl font-black text-blue-600">扫描管理器</h1>
             <div class="flex gap-2">
@@ -27,8 +35,8 @@
             </div>
         </header>
 
-        <!-- scannerSection -->
-        <section class="relative w-full aspect-square border-2 border-white">
+        <!-- 扫描界面 -->
+        <section v-if="!fullscreen" class="relative w-full aspect-square border-2 border-white">
             <div id="reader"></div>
             <div id="overlay" class="absolute inset-0 bg-black flex items-center justify-center">
                 <button" @click="startScanner"
@@ -40,11 +48,13 @@
             </div>
         </section>
 
-        <!-- dataSection -->
+        <!-- 管理扫描记录 -->
         <section class="flex flex-col overflow-hidden">
-            <div class="p-4 border-b bg-white flex items-center mb-2">
-                <button @click="clearAll"
-                    class="text-xs text-red-500 border border-red-200 px-2 py-1 rounded">清空</button>
+            <div class="text-base text-red-500 p-4 border-b bg-white flex items-center gap-x-2 mb-2">
+                <button @click="clearAll" class="border border-red-200 px-2 py-1 rounded">清空</button>
+                <button @click="fullscreen=!fullscreen" class="border border-red-200 px-2 py-1 rounded">
+                    {{fullscreen ? "恢复" : "全屏"}}
+                </button>
             </div>
             <div id="dataList" class="flex-1 overflow-y-auto p-2 space-y-4">
                 <div v-for="(item, index) in data" :key="item.id"
@@ -69,6 +79,7 @@
             </div>
         </section>
 
+        <!-- 管理列名 -->
         <div v-if="showColumns" @click.self="showColumns=false" class="fixed inset-0 bg-black/40 flex items-end z-50">
             <div class="bg-white w-full rounded-t-xl p-4 transition-transform max-h-[70vh] flex flex-col">
                 <div class="mb-4 text-gray-400 text-[18px] font-bold">配置列名</div>
@@ -212,18 +223,21 @@
             setup() {
                 const data = ref([])
                 let dataHash = {}
+                const fullscreen = ref(false)
                 const columns = ref(["内容"])
                 const showColumns = ref(false)
                 let scanner = null
                 let scanPaused = false
                 let lastScan = 0
 
+                // 启动扫描函数
                 async function startScanner() {
                     if (scanner) return
                     document.getElementById("overlay").classList.add("hidden")
                     scanner = new Html5Qrcode("reader")
                     await scanner.start({ facingMode: "environment" }, SCANNER_CONFIG, onScanSuccess).then(setupPinchZoom)
                 }
+                // 扫描成功回调函数
                 function onScanSuccess(text) {
                     if (!text) return
                     if (scanPaused) return
@@ -239,6 +253,7 @@
                         scanPaused = false
                     }, SCAN_PAUSED_MS)
                 }
+                // 停止扫描函数
                 async function stopScanner() {
                     if (!scanner || scanner.getState() == 1) return
                     document.getElementById("overlay").classList.remove("hidden")
@@ -246,7 +261,7 @@
                     scanner = null
                 }
 
-                // 增删排
+                // 增加记录
                 function add(content) {
                     const snapshot = captureSnapshot()
                     const item = { id: Date.now(), content, snapshot }
@@ -254,6 +269,7 @@
                     dataHash[content] = 1
                     addDBItem(item)
                 }
+                // 删除记录
                 const remove = (index) => {
                     id = data.value[index].id
                     content = data.value[index].content
@@ -261,12 +277,14 @@
                     delete dataHash[content]
                     data.value.splice(index, 1)
                 }
+                // 清空记录
                 const clearAll = () => {
                     if (!confirm("确定清空记录吗？")) return
                     clearDB()
                     data.value = []
                     dataHash = {}
                 }
+                // 记录按钮排序
                 const move = (index, step) => {
                     const target = index + step
                     if (target < 0 || target >= data.value.length) return
@@ -274,9 +292,16 @@
                     data.value[index] = data.value[target]
                     data.value[target] = temp
                 }
-                onMounted(async () => {
-                    document.onvisibilitychange = async () => { if (document.hidden) await stopScanner() }
+                // 预览快照
+                function showPreview(src) {
+                    const p = document.getElementById("preview")
+                    document.getElementById("previewImg").src = src
+                    p.classList.remove("hidden")
+                    p.onclick = () => p.classList.add("hidden")
+                }
 
+                onMounted(async () => {
+                    // 记录拖动排序
                     Sortable.create(document.getElementById("dataList"), {
                         animation: 150,
                         handle: ".handle",
@@ -290,25 +315,27 @@
                         }
                     })
 
+                    // 初始化并加载数据库
                     await initDB()
                     let res = await loadDB()
                     data.value = res
                     res.forEach(v => dataHash[v.content] = 1)
 
+                    // 加载列名
                     res = localStorage.getItem(COLUMNS_STORAGE_KEY)
                     if (res) columns.value = JSON.parse(res)
                 })
 
-                function showPreview(src) {
-                    const p = document.getElementById("preview")
-                    document.getElementById("previewImg").src = src
-                    p.classList.remove("hidden")
-                    p.onclick = () => p.classList.add("hidden")
-                }
+                // 全屏管理记录和页面不可见时停止扫描
+                document.onvisibilitychange = async () => { if (document.hidden) await stopScanner() }
+                watch(fullscreen, async newVal => { if (newVal) await stopScanner() })
 
+                // 持久化列名
                 watch(columns, (newVal) => { localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(newVal)) }, { deep: true })
-                watch(showColumns, async (val) => {
-                    if (val) {
+
+                // 列名拖动排序
+                watch(showColumns, async newVal => {
+                    if (newVal) {
                         document.body.style.overflow = "hidden"
                         await nextTick()
                         Sortable.create(document.getElementById("columnsList"), {
@@ -327,6 +354,7 @@
                     } else document.body.style.overflow = ""
                 })
 
+                // 导出 xlsx
                 async function exportXLSX() {
                     if (!data.value.length) return alert("无数据")
 
@@ -361,11 +389,14 @@
                     a.click()
                 }
 
-                return { data, startScanner, stopScanner, move, remove, clearAll, showPreview, showColumns, columns, exportXLSX }
+                return { data, startScanner, stopScanner, move, remove, clearAll, showPreview, fullscreen, showColumns, columns, exportXLSX }
             }
         }).mount("#app")
+    </script>
 
-
+    <script>
+        if ("serviceWorker" in navigator)
+            window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js"))
     </script>
 </body>
 
