@@ -1,6 +1,6 @@
 const CACHE_NAME = "PWA-v1"
 const ASSETS = [
-    // "./",
+    "./",
     "./index.html",
     "./manifest.json",
     "./icon-128.png",

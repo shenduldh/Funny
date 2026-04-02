@@ -1,7 +1,7 @@
 {
     "name": "扫描喵",
     "short_name": "扫描喵",
-    "start_url": "./index.html",
+    "start_url": "/",
     "display": "standalone",
     "background_color": "#FFFFFF",
     "theme_color": "#FFFFFF",
