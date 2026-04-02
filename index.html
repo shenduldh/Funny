@@ -10,18 +10,8 @@
     <script src="./assets/exceljs.min.js"></script>
     <script src="./assets/vue.global.js"></script>
     <script src="./assets/Sortable.min.js"></script>
-    <script src="./assets/vconsole.min.js"></script>
-    <script>new window.VConsole()</script>
-
-    <style>
-        .snapshot {
-            width: 40px;
-            height: 40px;
-            object-fit: cover;
-            border-radius: 6px;
-            border: 1px solid #ddd
-        }
-    </style>
+    <!-- <script src="./assets/vconsole.min.js"></script>
+    <script>new window.VConsole()</script> -->
 </head>
 
 <body class="bg-gray-100 h-screen flex flex-col font-sans">
@@ -37,7 +27,8 @@
             </div>
         </header>
 
-        <section id="scannerSection" class="relative w-full aspect-square border-2 border-white">
+        <!-- scannerSection -->
+        <section class="relative w-full aspect-square border-2 border-white">
             <div id="reader"></div>
             <div id="overlay" class="absolute inset-0 bg-black flex items-center justify-center">
                 <button" @click="startScanner"
@@ -49,58 +40,69 @@
             </div>
         </section>
 
-        <section id="managerSection" class="flex-1 overflow-y-auto px-4 pb-10">
-            <button @click="clearAll" class="bg-white px-3 py-2 rounded border text-sm text-red-500">
-                清空
-            </button>
-            <div id="list" class="space-y-3">
+        <!-- dataSection -->
+        <section class="flex flex-col overflow-hidden">
+            <div class="p-4 border-b bg-white flex items-center mb-2">
+                <button @click="clearAll"
+                    class="text-xs text-red-500 border border-red-200 px-2 py-1 rounded">清空</button>
+            </div>
+            <div id="dataList" class="flex-1 overflow-y-auto p-2 space-y-4">
                 <div v-for="(item, index) in data" :key="item.id"
-                    class="flex items-center bg-white border border-slate-100 p-3 rounded-2xl shadow-sm">
-                    <div class="handle p-2 text-slate-300">☰</div>
-                    <div class="flex flex-col gap-1 mr-3">
-                        <button @click="move(index, -1)"
-                            class="text-[10px] text-slate-400 hover:text-blue-500 disabled:invisible"
-                            :disabled="index === 0">▲</button>
-                        <button @click="move(index, 1)"
-                            class="text-[10px] text-slate-400 hover:text-blue-500 disabled:invisible"
-                            :disabled="index === data.length - 1">▼</button>
+                    class="flex items-center bg-white rounded-xl border shadow-sm">
+                    <div class="handle cursor-move pl-4 pr-2 py-4 text-slate-300 text-base mr-1">☰</div>
+                    <div class="flex flex-col text-[10px] text-slate-400 mr-2">
+                        <button @click="move(index, -1)" :disabled="index === 0"
+                            class="disabled:invisible mb-1 pr-1">▲</button>
+                        <button @click="move(index, 1)" :disabled="index === data.length - 1"
+                            class="disabled:invisible mt-1 pr-1">▼</button>
                     </div>
-                    <div class="flex-1 font-medium text-slate-700 truncate px-2">{{ item.content }}</div>
-                    <img :src="item.snapshot" class="snapshot" @click="showPreview(item.snapshot)">
-                    <button @click="remove(index)" class="p-2 text-red-400">✕</button>
+                    <div class="flex-1 truncate font-medium text-slate-700 text-base">{{ item.content }}</div>
+                    <img :src="item.snapshot" @click="showPreview(item.snapshot)"
+                        class="w-10 h-10 object-cover rounded mr-1 cursor-pointer">
+                    <button @click="remove(index)" class="text-red-400 ml-2 mr-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                    </button>
                 </div>
             </div>
         </section>
 
         <div v-if="showColumns" @click.self="showColumns=false" class="fixed inset-0 bg-black/40 flex items-end z-50">
-            <div class="bg-white w-full rounded-t-3xl p-6 transition-transform shadow-2xl">
-                <div class="flex flex-wrap gap-4 mb-6">
-                    <div v-for="(val, i) in columnNames" :key="i" class="relative">
-                        <input v-model="columnNames[i]"
-                            class="w-20 bg-gray-100 rounded px-1 py-1 outline-none focus:bg-blue-100 transition-colors"
+            <div class="bg-white w-full rounded-t-xl p-4 transition-transform max-h-[70vh] flex flex-col">
+                <div class="mb-4 text-gray-400 text-[18px] font-bold">配置列名</div>
+                <div id="columnsList"
+                    class="ml-2 flex flex-wrap gap-y-4 gap-x-6 mb-6 items-center overflow-y-auto overscroll-behavior-contain">
+                    <div v-for="(val, i) in columns" :key="i" class="draggable rounded bg-gray-100 flex items-center">
+                        <div class="handle cursor-move text-gray-300 text-xl px-4 py-2">⠿</div>
+                        <input v-model="columns[i]"
+                            class="w-20 p-1 bg-transparent outline-none text-sm focus:bg-blue-100 transition-colors"
                             autofocus>
-                        <button @click="columnNames.splice(i, 1)"
-                            class="absolute -right-1.5 -bottom-1.5 bg-red-500 text-white w-3.5 h-3.5 rounded-full text-[8px] flex items-center justify-center shadow-sm">✕</button>
+                        <button @click="columns.splice(i, 1)" class="ml-1 mr-2 text-red-400 disabled:invisible"
+                            :disabled="columns.length === 1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
                     </div>
-                    <button @click="columnNames.push('')"
-                        class="w-20 border-2 border-dashed rounded py-1 text-gray-400 text-sm">+</button>
+                    <button @click="columns.push('')"
+                        class="w-10 border-2 border-dashed rounded text-gray-400 text-xl">+</button>
                 </div>
                 <button @click="showColumns=false"
-                    class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">完成</button>
+                    class="ml-auto block w-32 bg-blue-600 text-white py-2.5 rounded-xl font-bold">完成</button>
             </div>
         </div>
 
-
     </div>
 
-
-
-    <div id="preview" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center">
+    <div id="preview" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center">
         <img id="previewImg" class="max-w-full max-h-full">
     </div>
 
     <script>
-        const SCANNER_CONFIG = { fps: 20, qrbox: (w, h) => ({ width: w * .5, height: h * .5 }), aspectRatio: 1 }
+        const SCANNER_CONFIG = { fps: 20, qrbox: (w, h) => ({ width: w * .75, height: h * .65 }), aspectRatio: 1 }
         const DB_NAME = "scannerDB"
         const TABLE_NAME = "records"
         const COLUMNS_STORAGE_KEY = "columns"
@@ -210,7 +212,7 @@
             setup() {
                 const data = ref([])
                 let dataHash = {}
-                const columnNames = ref(["内容"])
+                const columns = ref(["内容"])
                 const showColumns = ref(false)
                 let scanner = null
                 let scanPaused = false
@@ -241,7 +243,6 @@
                     if (!scanner || scanner.getState() == 1) return
                     document.getElementById("overlay").classList.remove("hidden")
                     await scanner.stop()
-                    await scanner.clear()
                     scanner = null
                 }
 
@@ -274,9 +275,12 @@
                     data.value[target] = temp
                 }
                 onMounted(async () => {
-                    Sortable.create(document.getElementById("list"), {
+                    document.onvisibilitychange = async () => { if (document.hidden) await stopScanner() }
+
+                    Sortable.create(document.getElementById("dataList"), {
+                        animation: 150,
                         handle: ".handle",
-                        animation: 200,
+                        ghostClass: "opacity-20",
                         onEnd: (e) => {
                             const temp = [...data.value]
                             const item = temp.splice(e.oldIndex, 1)[0]
@@ -292,7 +296,7 @@
                     res.forEach(v => dataHash[v.content] = 1)
 
                     res = localStorage.getItem(COLUMNS_STORAGE_KEY)
-                    if (res) columnNames.value = JSON.parse(res)
+                    if (res) columns.value = JSON.parse(res)
                 })
 
                 function showPreview(src) {
@@ -302,48 +306,62 @@
                     p.onclick = () => p.classList.add("hidden")
                 }
 
-                watch(columnNames, (newVal) => {
-                    localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(newVal))
-                }, { deep: true })
+                watch(columns, (newVal) => { localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(newVal)) }, { deep: true })
+                watch(showColumns, async (val) => {
+                    if (val) {
+                        document.body.style.overflow = "hidden"
+                        await nextTick()
+                        Sortable.create(document.getElementById("columnsList"), {
+                            animation: 150,
+                            draggable: ".draggable",
+                            handle: ".handle",
+                            ghostClass: "opacity-20",
+                            onEnd: e => {
+                                const temp = [...columns.value]
+                                const item = temp.splice(e.oldIndex, 1)[0]
+                                temp.splice(e.newIndex, 0, item)
+                                columns.value = []
+                                nextTick(() => { columns.value = temp })
+                            }
+                        })
+                    } else document.body.style.overflow = ""
+                })
 
                 async function exportXLSX() {
                     if (!data.value.length) return alert("无数据")
-                    const workbook = new ExcelJS.Workbook();
+
+                    const workbook = new ExcelJS.Workbook()
                     const worksheet = workbook.addWorksheet("扫描记录")
 
-                    const headers = ["序号", ...columnNames.value]
+                    const headers = ["序号", ...columns.value]
                     worksheet.columns = headers.map(h => ({ header: h, key: h, width: 15 }));
                     worksheet.getRow(1).font = { bold: true }
 
-                    const colCount = columnNames.value.length
                     let rowIndex = 1
-                    for (let i = 0; i < data.value.length; i += colCount) {
-                        const rowChunk = data.value.slice(i, i + colCount)
-                        worksheet.addRow([rowIndex++, ...rowChunk.map(i => i.content)])
-                    }
+                    for (let i = 0; i < data.value.length; i += columns.value.length)
+                        worksheet.addRow([rowIndex++, ...data.value.slice(i, i + columns.value.length).map(i => i.content)])
 
-                    worksheet.columns.forEach((column, colIndex) => {
-                        const isFirstColumn = (colIndex === 0)
-                        let maxColumnLength = 0
+                    worksheet.columns.forEach((column, index) => {
+                        let maxLength = 10
                         column.eachCell({ includeEmpty: true }, (cell) => {
-                            if (isFirstColumn) cell.alignment = { vertical: "middle", horizontal: "center" }
+                            if (index === 0) cell.alignment = { vertical: "middle", horizontal: "center" }
                             else cell.alignment = { vertical: "middle", horizontal: "left" }
                             const cellValue = cell.value ? cell.value.toString() : ""
-                            const currentLength = cellValue.split("").reduce((acc, char) => acc + (char.charCodeAt(0) > 255 ? 2 : 1), 0)
-                            if (currentLength > maxColumnLength) maxColumnLength = currentLength
+                            const currLength = cellValue.split("").reduce((acc, c) => acc + (c.charCodeAt(0) > 255 ? 2 : 1), 0)
+                            if (currLength > maxLength) maxLength = currLength
                         })
-                        column.width = maxColumnLength < 10 ? 10 : maxColumnLength + 2
+                        column.width = maxLength + 2
                     })
 
-                    const buf = await workbook.xlsx.writeBuffer()
-                    const blob = new Blob([buf])
+                    const buffer = await workbook.xlsx.writeBuffer()
+                    const blob = new Blob([buffer])
                     const a = document.createElement("a")
                     a.href = URL.createObjectURL(blob)
                     a.download = `扫描记录_${Date.now()}.xlsx`
                     a.click()
                 }
 
-                return { data, startScanner, stopScanner, move, remove, clearAll, showPreview, showColumns, columnNames, exportXLSX }
+                return { data, startScanner, stopScanner, move, remove, clearAll, showPreview, showColumns, columns, exportXLSX }
             }
         }).mount("#app")
 
