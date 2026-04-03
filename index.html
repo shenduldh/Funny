@@ -102,6 +102,9 @@
           </svg>
         </button>
       </div>
+      <div id="flash"
+        class="absolute bottom-0 left-0 w-full h-12 bg-gradient-to-t from-lime-400/50 opacity-0 transition-opacity duration-300">
+      </div>
     </section>
 
     <!-- 管理扫描记录 -->
@@ -322,10 +325,13 @@
           const now = Date.now()
           if (now - lastScan < SCAN_DEBOUNCE) return
           lastScan = now
+          const flash = document.getElementById("flash")
+          flash.classList.replace("opacity-0", "opacity-100")
           scanner.pause(true)
           scanPaused = true
           add(text)
           setTimeout(() => {
+            flash.classList.replace("opacity-100", "opacity-0")
             scanner.resume()
             scanPaused = false
           }, SCAN_PAUSED_MS)
