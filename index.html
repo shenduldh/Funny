@@ -119,14 +119,17 @@
             </div>
             <div id="dataList" class="flex-1 overflow-y-auto p-2 space-y-4">
                 <div v-for="(item, index) in data" :key="item.id" class="flex items-center bg-white rounded shadow-sm">
-                    <div class="handle cursor-move pl-4 pr-2 py-4 text-slate-300 text-base mr-1">☰</div>
-                    <div class="flex flex-col text-[10px] text-slate-400 mr-2">
+                    <div class="handle cursor-move py-4 mr-2 flex items-center">
+                        <span class="text-orange-200 text-sm px-2">{{index}}</span>
+                        <span class="text-slate-300 text-base">☰</span>
+                    </div>
+                    <div class="flex flex-col text-[10px] text-slate-400 mr-1">
                         <button @click="move(index, -1)" :disabled="index === 0"
                             class="disabled:invisible mb-1 pr-1">▲</button>
                         <button @click="move(index, 1)" :disabled="index === data.length - 1"
                             class="disabled:invisible mt-1 pr-1">▼</button>
                     </div>
-                    <div class="flex-1 truncate font-medium text-slate-700 text-base">{{ item.content }}</div>
+                    <div class="flex-1 truncate font-medium text-slate-700 text-[17px]">{{item.content}}</div>
                     <a :href="item.snapshot" data-pswp-width="2000" data-pswp-height="2000" target="_blank">
                         <img :src="item.snapshot" class="w-10 h-10 object-cover rounded mr-1 cursor-pointer">
                     </a>
