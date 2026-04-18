@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>爬梯子决策器 - 专业版</title>
+    <title>爬梯子决策</title>
     <script src="./assets/vue.global.js"></script>
     <script src="./assets/tailwindcss.js"></script>
     <style>
@@ -51,7 +51,6 @@
             <h1 class="text-4xl font-black tracking-tight text-slate-800 flex justify-center items-center gap-3">
                 <span class="text-5xl">🪜</span> 爬梯子决策
             </h1>
-            <p class="text-slate-500 mt-2">公平、透明、有趣的随机决策工具</p>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
@@ -91,7 +90,7 @@
                 <h2 class="text-lg font-bold flex items-center gap-2 mb-4">
                     <span
                         class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-sm">02</span>
-                    结果内容 (对应出口位置)
+                    结果内容
                 </h2>
                 <div class="space-y-2 max-h-[308px] overflow-y-auto no-scrollbar">
                     <div v-for="(res, index) in results" :key="index"
